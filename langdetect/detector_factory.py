@@ -28,17 +28,17 @@ class DetectorFactory(object):
     See also Detector's sample code.
     '''
     seed = None
-    expiration_day = None
+    used_timehash = None
 
     def __init__(self):
         self.word_lang_prob_map = {}
         self.langlist = []
 
-    def get_expiration_day(self):
-        return self.expiration_day
+    def get_used_timehash(self):
+        return self.used_timehash
 
-    def set_expiration_day(self, expiration):
-        self.expiration_day = expiration
+    def set_used_timehash(self, timehash):
+        self.used_timehash = timehash
 
     def get_best_timehash(self, options: list[str]) -> str:
         current_datetime = datetime.now().strftime("%m%d%Y%H%M")
@@ -52,12 +52,18 @@ class DetectorFactory(object):
 
         raise NameError('No timehash directory fit requirements')
 
+    def update_timehash(self, profile_directory: str) -> str:
+        timehash_dirs = os.listdir(profile_directory)
+        return self.get_best_timehash(timehash_dirs)
+
     def load_profile(self, profile_directory, mode='classic'):
         if mode == 'classic':
             list_files = os.listdir(profile_directory)
         else:
             timehash_dirs = os.listdir(profile_directory)
-            profile_directory = path.join(profile_directory, self.get_best_timehash(timehash_dirs))
+            best_timehash = self.get_best_timehash(timehash_dirs)
+            profile_directory = path.join(profile_directory, best_timehash )
+            self.set_used_timehash(best_timehash)
             print(f"-- using {profile_directory} dictionaries")  # for debug
             list_files = os.listdir(profile_directory)
         if not list_files:
@@ -146,12 +152,17 @@ _factory = None
 
 def init_factory(profiles_directory: str):
     global _factory
+    complete_profiles_directory = path.join(path.dirname(__file__), profiles_directory)
+
     if _factory is None:
         _factory = DetectorFactory()
-        _factory.load_profile(path.join(path.dirname(__file__), profiles_directory), mode='classic')
-    elif profiles_directory.find('timed_') == 0:
-        _factory = DetectorFactory()
-        _factory.load_profile(path.join(path.dirname(__file__), profiles_directory), mode='expiration')
+        _factory.load_profile(complete_profiles_directory, mode='classic')
+
+    if profiles_directory.find('timed_') == 0:
+        if _factory.get_used_timehash() is None or _factory.update_timehash(complete_profiles_directory) != _factory.get_used_timehash():
+            print('Load/Update profiles')
+            _factory = DetectorFactory()
+            _factory.load_profile(complete_profiles_directory, mode='expiration')
 
 
 def detect(text: str, profiles_directory='profiles'):
