@@ -1,6 +1,7 @@
 import os
 from os import path
 import sys
+from datetime import datetime
 
 try:
     import simplejson as json
@@ -27,13 +28,38 @@ class DetectorFactory(object):
     See also Detector's sample code.
     '''
     seed = None
+    expiration_day = None
 
     def __init__(self):
         self.word_lang_prob_map = {}
         self.langlist = []
 
-    def load_profile(self, profile_directory):
-        list_files = os.listdir(profile_directory)
+    def get_expiration_day(self):
+        return self.expiration_day
+
+    def set_expiration_day(self, expiration):
+        self.expiration_day = expiration
+
+    def get_best_timehash(self, options: list[str]) -> str:
+        current_datetime = datetime.now().strftime("%m%d%Y%H%M")
+        int_sorted_timehash = sorted([int(x) for x in options], reverse=True)
+
+        for timestamps in int_sorted_timehash:
+            if timestamps <= int(current_datetime):
+                if len(str(timestamps)) < 12:
+                    return f"0{str(timestamps)}"
+                return str(timestamps)
+
+        raise NameError('No timehash directory fit requirements')
+
+    def load_profile(self, profile_directory, mode='classic'):
+        if mode == 'classic':
+            list_files = os.listdir(profile_directory)
+        else:
+            timehash_dirs = os.listdir(profile_directory)
+            profile_directory = path.join(profile_directory, self.get_best_timehash(timehash_dirs))
+            print(f"-- using {profile_directory} dictionaries")  # for debug
+            list_files = os.listdir(profile_directory)
         if not list_files:
             raise LangDetectException(ErrorCode.NeedLoadProfileError, 'Not found profile: ' + profile_directory)
 
@@ -117,21 +143,26 @@ class DetectorFactory(object):
 PROFILES_DIRECTORY = path.join(path.dirname(__file__), 'profiles')
 _factory = None
 
-def init_factory():
+
+def init_factory(profiles_directory: str):
     global _factory
     if _factory is None:
         _factory = DetectorFactory()
-        _factory.load_profile(PROFILES_DIRECTORY)
+        _factory.load_profile(path.join(path.dirname(__file__), profiles_directory), mode='classic')
+    elif profiles_directory.find('timed_') == 0:
+        _factory = DetectorFactory()
+        _factory.load_profile(path.join(path.dirname(__file__), profiles_directory), mode='expiration')
 
-def detect(text):
-    init_factory()
+
+def detect(text: str, profiles_directory='profiles'):
+    init_factory(profiles_directory)
     detector = _factory.create()
     detector.append(text)
     return detector.detect()
 
 
-def detect_langs(text):
-    init_factory()
+def detect_langs(text: str, profiles_directory='profiles'):
+    init_factory(profiles_directory)
     detector = _factory.create()
     detector.append(text)
     return detector.get_probabilities()
